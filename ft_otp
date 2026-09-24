@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+import sys, time, struct, hmac, hashlib, base64, os
+
+# External dependencies (requires: pip install qrcode cryptography)
+import qrcode
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+APP_KEY = b"42CyberSecurityPiscineFtOtpKey!!" # 32-byte AES key
+
+def encrypt_key(plaintext: bytes) -> bytes:
+    aesgcm = AESGCM(APP_KEY)
+    nonce = os.urandom(12)
+    return nonce + aesgcm.encrypt(nonce, plaintext, None)
+
+def decrypt_key(ciphertext: bytes) -> bytes:
+    aesgcm = AESGCM(APP_KEY)
+    return aesgcm.decrypt(ciphertext[:12], ciphertext[12:], None)
+
+def generate_totp(secret: bytes) -> str:
+    time_step = int(time.time() // 30)
+    counter = struct.pack(">Q", time_step)
+    mac = hmac.new(secret, counter, hashlib.sha1).digest()
+    offset = mac[-1] & 0x0F
+    binary_code = struct.unpack(">I", mac[offset:offset+4])[0] & 0x7FFFFFFF
+    return f"{binary_code % 1000000:06d}"
+
+def handle_generate_key(filename):
+    try:
+        with open(filename, 'r') as f:
+            hex_str = f.read().strip()
+        if len(hex_str) < 64: raise ValueError("Key must be at least 64 hex chars.")
+        decoded = bytes.fromhex(hex_str)
+        
+        with open("ft_otp.key", 'wb') as f:
+            f.write(encrypt_key(decoded))
+        
+        # Bonus: QR Code
+        b32_secret = base64.b32encode(decoded).decode('utf-8').rstrip('=')
+        uri = f"otpauth://totp/42_Piscine?secret={b32_secret}&issuer=ft_otp"
+        qrcode.make(uri).save("ft_otp.png")
+        print("Key was successfully saved in ft_otp.key.")
+        print("QR code was successfully saved in ft_otp.png.")
+    except Exception as e:
+        print(f"./ft_otp: error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def handle_generate_totp(filename):
+    try:
+        with open(filename, 'rb') as f:
+            print(generate_totp(decrypt_key(f.read())))
+    except Exception as e:
+        print(f"./ft_otp: error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def run_gui():
+    try:
+        import tkinter as tk
+        from tkinter import filedialog, messagebox
+    except ImportError:
+        print("./ft_otp: error: GUI requires tkinter. Install it using 'sudo apt-get install python3-tk'", file=sys.stderr)
+        sys.exit(1)
+
+    root = tk.Tk()
+    root.title("ft_otp - Time-Based OTP")
+    root.geometry("400x200")
+
+    def gui_gen_key():
+        filename = filedialog.askopenfilename(filetypes=[("Hex files", "*.txt *.hex")])
+        if filename:
+            handle_generate_key(filename)
+            messagebox.showinfo("Success", "Key and QR code saved successfully!")
+
+    def gui_gen_totp():
+        try:
+            with open("ft_otp.key", 'rb') as f:
+                lbl_otp.config(text=f"Your OTP: {generate_totp(decrypt_key(f.read()))}")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    tk.Label(root, text="Welcome to ft_otp", pady=10).pack()
+    tk.Button(root, text="Generate Key from Hex File", command=gui_gen_key).pack(pady=5)
+    tk.Button(root, text="Generate TOTP", command=gui_gen_totp).pack(pady=5)
+    lbl_otp = tk.Label(root, text="", font=("Helvetica", 16, "bold"), pady=10)
+    lbl_otp.pack()
+    root.mainloop()
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "-g":
+        handle_generate_key(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "-k":
+        handle_generate_totp(sys.argv[2])
+    elif len(sys.argv) == 1:
+        run_gui()
+    else:
+        print("Usage: ./ft_otp [-g <file> | -k <file>]", file=sys.stderr)
+        sys.exit(1)
