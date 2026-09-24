@@ -1,4 +1,5 @@
 *This Project has been Created by khhammou*
+
 # ft_otp (Python Edition)
 
 A Time-based One-Time Password (TOTP) generator based on RFC 6238 and RFC 4226, written for the 42 Cybersecurity Piscine.
@@ -17,7 +18,6 @@ You can test your generated keys with the reference tool like this:
 ```bash
 $ oathtool --totp $(cat key.hex)
 ```
-*Note: Make sure your system clock is synchronized.*
 
 ## Installation
 Since this is a standalone Python script, there is no compilation step. Just ensure it has executable permissions and install the required external libraries:
@@ -42,3 +42,12 @@ pip install -r requirements.txt
 ./ft_otp
 ```
 
+## The Test Process
+1. Create a dummy 64-character hex key
+echo -n "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" > key.hex
+2. Run script to generate a TOTP
+./ft_otp -g key.hex
+./ft_otp -k ft_otp.key
+3. Run OAthTool using same exact raw key
+oathtool $(python3 -c "import base64; print(base64.b32encode(bytes.fromhex('$(cat key.hex)')).decode('utf-8'))")
+./ft_otp -k ft_otp.key
